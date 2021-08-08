@@ -1,0 +1,363 @@
+<HTML>
+<HEAD>
+<TITLE>Darling Waterer</TITLE>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+
+* {
+  box-sizing: border-box;
+}
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+header {
+  background-color: #FFFFFF;
+  padding: 0px;
+  font-size: xxx-large;
+}
+.container {
+  position: relative;
+  text-align: center;
+  font-size: larger;
+  color: #A0F0F0;
+}
+.centered {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: larger;
+}
+nav {
+  float: left;
+  width: 12%;
+  height: 300px; /* only for demonstration, should be removed */
+  background: #FFFFFF;
+  padding: 20px;
+}
+nav ul {
+  list-style-type: none;
+  padding: 0;
+}
+main {
+  float: left;
+  padding: 10px 30px;
+  width: 88%;
+  height: 70%;
+  background-color: #f1f1f1;
+  color: #000000
+}
+section::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+.scroller {
+  width: 1000px;
+  height: 70%;
+  overflow:scroll;
+}
+.button {
+  text-decoration: none;
+  padding: 10px 20px 10px 20px;
+  width: 200px;
+}
+a:link {
+  text-align: center;
+  background-color: #A0F0F0;
+  color: #606060;
+  font-weight: bold;
+  text-decoration: none
+}
+a:visited {
+  text-align: center;
+  background-color: #A0F0F0;
+  color: #606060;
+  font-weight: bold;
+  text-decoration: none
+}
+a:hover {
+  text-align: center;
+  background-color: #90E0E0;
+  color: #000000;
+  font-weight: bold;
+  text-decoration: none
+}
+a:active {
+  text-align: center;
+  background-color: #AFFFFF;
+  color: #202020;
+  font-weight: bold;
+  text-decoration: none
+}
+footer {
+  padding: 10px;
+  width: 100%;
+  background-color: #AFFFFF;
+  text-align: center;
+  color: black;
+}
+/* Responsive layout - makes the two columns/boxes stack on top of each other instead of next to each other, on small screens */
+@media (max-width: 600px) {
+  nav, article {
+    width: 100%;
+    height: auto;
+  }
+}
+
+</style>
+
+<script type="text/javascript">
+  const WATERER_URL_BASE = 'http://192.168.123.98:8080/';
+  const REQUEST_HEADERS = {
+    'Content-Type': 'application/json'
+  };
+  const req_action = new XMLHttpRequest();
+  const req_reset_logs = new XMLHttpRequest();
+  function Select(id) {
+    var status = document.getElementById('status');
+    var manual = document.getElementById('manual');
+    var config = document.getElementById('config');
+    var logs = document.getElementById('logs');
+    var active = document.getElementById(id);
+    status.style.display = "none";
+    manual.style.display = "none";
+    config.style.display = "none";
+    logs.style.display = "none";
+    active.style.display = "inline-block";
+  }
+
+  function Status(j)
+  {
+    var div = document.getElementById('status')
+    if (null === j)
+    {
+      content = 
+        '<div class="status">' +
+        '  <h1>System Status:</h1>' +
+        '  <p>&nbsp;&nbsp;&nbsp;Unable to receive status.' +
+        '  <p>&nbsp;&nbsp;&nbsp;Is the device offline?' +
+        '</div>';
+      div.innerHTML = content;
+      return
+    }
+    // console.log(j);
+    var startup = j.startup;
+    var now = j.now;
+    var sensor_str = "(disabled)";
+    if ('True' === j.sensor) { sensor_str = 'Active'; }
+    var timer_str = "(disabled)";
+    var timer = j.timer;
+    if ('True' === j.timer) { timer_str = 'Active'; }
+    var next = '(manual only)';
+    if (('True' === j.sensor) || ('True' === j.timer))
+    {
+      next = j.next;
+    }
+    var mode = j.mode;
+    var next_str = ''
+    if ('Automatic' === mode)
+    {
+      next_str = '  <p>&nbsp;&nbsp;&nbsp;<strong>Next:</strong> ' + next
+    }
+    var watering = j.watering;
+    content = 
+      '<div class="status">' +
+      '  <h1>System status:</h1>' +
+      '  <p>&nbsp;&nbsp;&nbsp;<strong>Started:</strong> ' + startup +
+      '  <p>&nbsp;&nbsp;&nbsp;<strong>Currently:</strong> ' + now +
+      '  <p>&nbsp;&nbsp;&nbsp;<strong>Mode:</strong> ' + mode +
+      '  <p>&nbsp;&nbsp;&nbsp;<strong>Sensor:</strong> ' + sensor_str +
+      '  <p>&nbsp;&nbsp;&nbsp;<strong>Timer:</strong> ' + timer_str +
+      '  <p>&nbsp;&nbsp;&nbsp;<strong>Watering:</strong> ' + watering +
+      next_str +
+      '</div>';
+    div.innerHTML = content;
+  }
+
+  function Logs(j)
+  {
+    var div = document.getElementById('logs')
+    if (null === j)
+    {
+      content = 
+        '<div class="status">' +
+        '  <h1>System Logs:</h1>' +
+        '  <p>&nbsp;&nbsp;&nbsp;Unable to receive logs.' +
+        '  <p>&nbsp;&nbsp;&nbsp;Is the device offline?' +
+        '</div>';
+      div.innerHTML = content;
+      return
+    }
+    content = 
+      '<div class="logs">' +
+      '  <h1>System Logs:</h1>' + 
+      '  <br />' +
+      '  <p><a class="button" href="javascript:ResetLogs()">&nbsp;Reset Logs&nbsp;</a></p>' + 
+      '  <br />' +
+      '  <div class="scroller">'
+    for (let x in j.logs)
+      content += 
+        '<p>' +
+        JSON.stringify(j.logs[x]) +
+        '</p>';
+    content += '</div>';
+    content += '</div>';
+    div.innerHTML = content;
+  }
+
+  function ResetLogs() {
+    // Only send a new request if idle
+    if((req_reset_logs.readyState === XMLHttpRequest.UNSENT) || (req_reset_logs.readyState === XMLHttpRequest.DONE)) {
+      req_reset_logs.open("DELETE", WATERER_URL_BASE + 'logs', true);
+      req_reset_logs.onreadystatechange = function () {
+        if(req_reset_logs.readyState === XMLHttpRequest.DONE) {
+          var status = req_reset_logs.status;
+          if (status === 0 || (status >= 200 && status < 300)) {
+            console.log(req_reset_logs.responseText);
+          } else {
+            console.log("FAILED!");
+          }
+        }
+      };
+      req_reset_logs.send();
+    }
+  }
+
+  function Watering(onoff) {
+    var args = 'action=stop';
+    if (onoff) {
+      args = 'action=water';
+    }
+    // Only send a new request if idle
+    if((req_action.readyState === XMLHttpRequest.UNSENT) || (req_action.readyState === XMLHttpRequest.DONE)) {
+      //console.log("Sending request...");
+      req_action.open("POST", WATERER_URL_BASE + 'water', true);
+      req_action.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+      req_action.onreadystatechange = function () {
+        //console.log("Ready state changed!");
+        if(req_action.readyState === XMLHttpRequest.DONE) {
+          var status = req_action.status;
+          if (status === 0 || (status >= 200 && status < 300)) {
+            console.log(req_action.responseText);
+          } else {
+            console.log("FAILED!");
+          }
+        }
+      };
+      req_action.send(args);
+    }
+  }
+</script>
+
+</HEAD>
+<BODY>
+
+<header>
+  <div class="container">
+    <img src="backyard.jpg" alt="our backyard" width="100%" height="20%">
+    <div class="centered"><i><strong>Darling Waterer</strong></i></div>
+  </div>
+</header>
+
+<section>
+
+  <nav>
+    <p><a class="button" href="javascript:Select('status')">&nbsp;Status&nbsp;</a></p>
+    <br />
+    <p><a class="button" href="javascript:Select('manual')">Manual</a></p>
+    <br />
+    <p><a class="button" href="javascript:Select('config')">Config&nbsp;</a></p>
+    <br />
+    <p><a class="button" href="javascript:Select('logs')">&nbsp;&nbsp;Logs&nbsp;&nbsp;</a></p>
+  </nav>
+  
+  <main>
+    <div id="status" style="display: none;">
+      Retrieving status...  Please wait.
+    </div>
+    <div id="manual" style="display: none;">
+      <div class="manual">
+        <h1>Manual Controls:</h1>
+        <p><a class="button" href="javascript:Watering(true)">&nbsp;Start Watering&nbsp;</a></p>
+        <br />
+        <p><a class="button" href="javascript:Watering(false)">&nbsp;Stop Watering&nbsp;</a></p>
+      </div>
+    </div>
+    <div id="config" style="display: none;">
+      <div class="config">
+        <h1>System Configuration:</h1>
+      </div>
+    </div>
+    <div id="logs" style="display: none;">
+      Retrieving logs...  Please wait.
+    </div>
+  </main>
+
+</section>
+
+<script type="text/javascript">
+  Select('status');
+  const refresh_seconds = 10;
+  window.setInterval("refresh()", 1000 * refresh_seconds);  
+  const req_status = new XMLHttpRequest();
+  const req_logs = new XMLHttpRequest();
+  function refresh()
+  {
+    if((req_status.readyState === XMLHttpRequest.UNSENT) || (req_status.readyState === XMLHttpRequest.DONE)) {
+      req_status.open("GET", WATERER_URL_BASE + 'status', true);
+      req_status.onreadystatechange = function () {
+        if(req_status.readyState === XMLHttpRequest.DONE) {
+          var status = req_status.status;
+          if (status === 0 || (status >= 200 && status < 300)) {
+            try
+            {
+              var j = JSON.parse(req_status.responseText);
+              Status(j)
+            }
+            catch(err)
+            {
+              Status(null)
+            }
+          } else {
+            Status(null)
+          }
+        }
+      };
+      req_status.send();
+    }
+    if((req_logs.readyState === XMLHttpRequest.UNSENT) || (req_logs.readyState === XMLHttpRequest.DONE)) {
+      req_logs.open("GET", WATERER_URL_BASE + 'logs', true);
+      req_logs.onreadystatechange = function () {
+        if(req_logs.readyState === XMLHttpRequest.DONE) {
+          var status = req_logs.status;
+          if (status === 0 || (status >= 200 && status < 300)) {
+            try
+            {
+              var j = JSON.parse(req_logs.responseText);
+              Logs(j)
+            }
+            catch(err)
+            {
+              Logs(null)
+            }
+          } else {
+            console.log("FAILED!");
+            Logs(null)
+          }
+        }
+      };
+      req_logs.send();
+    }
+  }
+  refresh();
+</script>
+
+<footer>
+  <p>Of course, if you don't like the way this looks, or works, I can change it to whatever you like.  (Or you could since you know HTML better than I do!)</p>
+</footer>
+
+</BODY>
+</HTML>
