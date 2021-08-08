@@ -110,12 +110,17 @@ footer {
 </style>
 
 <script type="text/javascript">
+
   const WATERER_URL_BASE = 'http://192.168.123.98:8080/';
   const REQUEST_HEADERS = {
     'Content-Type': 'application/json'
   };
-  const req_action = new XMLHttpRequest();
-  const req_reset_logs = new XMLHttpRequest();
+
+  //
+  // Select active pane
+  //
+
+  let selected = 'status';
   function Select(id) {
     var status = document.getElementById('status');
     var manual = document.getElementById('manual');
@@ -127,13 +132,21 @@ footer {
     config.style.display = "none";
     logs.style.display = "none";
     active.style.display = "inline-block";
+    selected = id;
+    if ('status' === id) { refresh_status(); }
+    if ('logs' === id) { refresh_logs(); }
+    if ('config' === id) { refresh_config(); }
   }
 
-  function Status(j)
-  {
+
+  //
+  // Status
+  //
+
+  // Render the status pane
+  function Status(j) {
     var div = document.getElementById('status')
-    if (null === j)
-    {
+    if (null === j) {
       content = 
         '<div class="status">' +
         '  <h1>System Status:</h1>' +
@@ -152,20 +165,18 @@ footer {
     var timer = j.timer;
     if ('True' === j.timer) { timer_str = 'Active'; }
     var next = '(manual only)';
-    if (('True' === j.sensor) || ('True' === j.timer))
-    {
+    if (('True' === j.sensor) || ('True' === j.timer)) {
       next = j.next;
     }
     var mode = j.mode;
     var next_str = ''
-    if ('Automatic' === mode)
-    {
+    if ('Automatic' === mode) {
       next_str = '  <p>&nbsp;&nbsp;&nbsp;<strong>Next:</strong> ' + next
     }
     var watering = j.watering;
     content = 
       '<div class="status">' +
-      '  <h1>System status:</h1>' +
+      '  <h1>System Status:</h1>' +
       '  <p>&nbsp;&nbsp;&nbsp;<strong>Started:</strong> ' + startup +
       '  <p>&nbsp;&nbsp;&nbsp;<strong>Currently:</strong> ' + now +
       '  <p>&nbsp;&nbsp;&nbsp;<strong>Mode:</strong> ' + mode +
@@ -177,11 +188,43 @@ footer {
     div.innerHTML = content;
   }
 
-  function Logs(j)
+  // Repeatedly update the status data using the REST API
+  const refresh_status_seconds = 10;
+  window.setInterval("refresh_status()", 1000 * refresh_status_seconds);  
+  const req_status = new XMLHttpRequest();
+  function refresh_status()
   {
+    if('status' === selected && ((req_status.readyState === XMLHttpRequest.UNSENT) || (req_status.readyState === XMLHttpRequest.DONE))) {
+      req_status.open("GET", WATERER_URL_BASE + 'status', true);
+      req_status.onreadystatechange = function () {
+        if(req_status.readyState === XMLHttpRequest.DONE) {
+          var status = req_status.status;
+          if (status === 0 || (status >= 200 && status < 300)) {
+            try {
+              var j = JSON.parse(req_status.responseText);
+              Status(j)
+            }
+            catch(err) {
+              Status(null)
+            }
+          } else {
+            Status(null)
+          }
+        }
+      };
+      req_status.send();
+    }
+  }
+
+
+  //
+  // Logs
+  //
+
+  // Render the logs pane
+  function Logs(j) {
     var div = document.getElementById('logs')
-    if (null === j)
-    {
+    if (null === j) {
       content = 
         '<div class="status">' +
         '  <h1>System Logs:</h1>' +
@@ -208,6 +251,37 @@ footer {
     div.innerHTML = content;
   }
 
+  // Repeatedly update the log data using the REST API
+  const refresh_logs_seconds = 5;
+  window.setInterval("refresh_logs()", 1000 * refresh_logs_seconds);  
+  const req_logs = new XMLHttpRequest();
+  function refresh_logs()
+  {
+    if('logs' === selected && ((req_logs.readyState === XMLHttpRequest.UNSENT) || (req_logs.readyState === XMLHttpRequest.DONE))) {
+      req_logs.open("GET", WATERER_URL_BASE + 'logs', true);
+      req_logs.onreadystatechange = function () {
+        if(req_logs.readyState === XMLHttpRequest.DONE) {
+          var status = req_logs.status;
+          if (status === 0 || (status >= 200 && status < 300)) {
+            try {
+              var j = JSON.parse(req_logs.responseText);
+              Logs(j)
+            }
+            catch(err) {
+              Logs(null)
+            }
+          } else {
+            console.log("FAILED!");
+            Logs(null)
+          }
+        }
+      };
+      req_logs.send();
+    }
+  }
+
+  // Use the REST API to delete the old logs
+  const req_reset_logs = new XMLHttpRequest();
   function ResetLogs() {
     // Only send a new request if idle
     if((req_reset_logs.readyState === XMLHttpRequest.UNSENT) || (req_reset_logs.readyState === XMLHttpRequest.DONE)) {
@@ -218,7 +292,7 @@ footer {
           if (status === 0 || (status >= 200 && status < 300)) {
             console.log(req_reset_logs.responseText);
           } else {
-            console.log("FAILED!");
+            console.log("Log reset FAILED!");
           }
         }
       };
@@ -226,6 +300,13 @@ footer {
     }
   }
 
+
+  //
+  // Manual
+  //
+
+  // Send a REST request to take watering action (start or stop)
+  const req_action = new XMLHttpRequest();
   function Watering(onoff) {
     var args = 'action=stop';
     if (onoff) {
@@ -241,15 +322,147 @@ footer {
         if(req_action.readyState === XMLHttpRequest.DONE) {
           var status = req_action.status;
           if (status === 0 || (status >= 200 && status < 300)) {
-            console.log(req_action.responseText);
+            //console.log(req_action.responseText);
           } else {
-            console.log("FAILED!");
+            console.log("Watering action FAILED!");
           }
         }
       };
       req_action.send(args);
     }
   }
+
+
+  //
+  // Config
+  //
+
+  // Render the config pane
+  function Config(j) {
+    var div = document.getElementById('config')
+    if (null === j) {
+      content = 
+        '<div class="status">' +
+        '  <h1>System Configuration:</h1>' +
+        '  <p>&nbsp;&nbsp;&nbsp;Unable to receive configuration.' +
+        '  <p>&nbsp;&nbsp;&nbsp;Is the device offline?' +
+        '</div>';
+      div.innerHTML = content;
+      return
+    }
+    // console.log(j);
+    var sensor = ('False' === j.sensor);
+    var dry_percent = j.dry_percent;
+    var cooldown_min = j.cooldown_min;
+    var timer = ('False' === j.timer);
+    var when = j.when;
+    var duration_sec = j.duration_sec;
+    var days = j.days;
+    content = 
+      '<div class="config">' +
+      '  <h1>System Configuration:</h1>' +
+      '  <p><a class="button" href="javascript:UpdateConfig()">&nbsp;Update Configuration&nbsp;</a></p>' + 
+      '  <form method="post" action="' + WATERER_URL_BASE + 'config">' +
+      '    <table>' +
+      '      <tr>'
+    content += '<th>&nbsp;</th><th>&nbsp;</th><th>&nbsp;</th><th>&nbsp;</th>'
+    content += '</tr><tr>'
+    if (sensor) {
+      content += '<td>Sensor Enabled</td><td><input type="checkbox" id="sensor" name="sensor" checked></td><td>&nbsp;</td><td>&nbsp;</td>'
+    } else {
+      content += '<td>Sensor Enabled</td><td><input type="checkbox" id="sensor" name="sensor"></td><td>&nbsp;</td><td>&nbsp;</td>'
+    }
+    content += '</tr><tr>'
+    content += '<td>&nbsp;</td><td>Too Dry (Percent)</td><td><input type="text" id="dry_percent" name="dry_percent" value="' + dry_percent + '"></td><td>(what level of dryness should trigger watering)</td>'
+    content += '      </tr><tr>'
+    content += '        <td>&nbsp;</td><td>Cooldown (Minutes)</td><td><input type="text" id="cooldown_min" name="cooldown_min" value="' + cooldown_min + '"></td><td>(how long to wait after watering before watering again)</td>'
+    content += '</tr><tr>'
+    content += '<td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>'
+    content += '</tr><tr>'
+    if (timer) {
+      content += '<td>Timer Enabled</td><td><input type="checkbox" id="timer" name="timer" checked></td><td>&nbsp;</td><td>&nbsp;</td>'
+    } else {
+      content += '<td>Timer Enabled</td><td><input type="checkbox" id="timer" name="timer"></td><td>&nbsp;</td><td>&nbsp;</td>'
+    }
+    content += '</tr><tr>'
+    content += '        <td>&nbsp;</td><td>When To Water</td><td><input type="text" id="when" name="when" value="' + when + '"></td><td>(time of day to water, 12 hour clock with AM/PM)</td>'
+    content += '</tr><tr>'
+    content += '        <td>&nbsp;</td><td>Days To Water (all/odd/even)&nbsp;</td><td><input type="text" id="days" name="days" value="' + days + '"></td><td>(which days to water, all, odd, or even)</td>'
+    content += '</tr><tr>'
+    content += '<td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>'
+    content += '</tr><tr>'
+    content += '<td>Water For (Seconds)&nbsp;</td><td><input type="text" id="duration_sec" name="duration_sec" value="' + duration_sec + '"></td><td>(duration of one event)</td><td>&nbsp;</td>'
+    content += '      </tr><tr>'
+    content += 
+      '      </tr>'
+      '    </table>' +
+      '  </form>' +
+      '</div>';
+    div.innerHTML = content;
+  }
+
+  // Send a REST request to update the configuration
+  const req_update_config = new XMLHttpRequest();
+  function UpdateConfig() {
+    var sensor = document.getElementById('sensor').checked;
+    var timer = document.getElementById('timer').checked;
+    var args =
+      'sensor=' + sensor + '&' +
+      'dry_percent=' + dry_percent.value + '&' +
+      'cooldown_min=' + cooldown_min.value + '&' +
+      'timer=' + timer + '&' +
+      'when=' + encodeURIComponent(when.value) + '&' +
+      'duration_sec=' + duration_sec.value + '&' +
+      'days=' + days.value
+    // Only send a new request if idle
+    if((req_update_config.readyState === XMLHttpRequest.UNSENT) || (req_update_config.readyState === XMLHttpRequest.DONE)) {
+      //console.log("Sending request...");
+      req_update_config.open("POST", WATERER_URL_BASE + 'config', true);
+      req_update_config.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+      req_update_config.onreadystatechange = function () {
+        //console.log("Ready state changed!");
+        if(req_update_config.readyState === XMLHttpRequest.DONE) {
+          var status = req_update_config.status;
+          if (status === 0 || (status >= 200 && status < 300)) {
+            //console.log(req_update_config.responseText);
+          } else {
+            console.log("Updating configuration FAILED!");
+          }
+        }
+      };
+      req_update_config.send(args);
+    }
+  }
+
+  // Repeatedly update the config data using the REST API
+  const refresh_config_seconds = 30;
+  window.setInterval("refresh_config()", 1000 * refresh_config_seconds);  
+  const req_config = new XMLHttpRequest();
+  function refresh_config()
+  {
+    if('config' === selected && ((req_config.readyState === XMLHttpRequest.UNSENT) || (req_config.readyState === XMLHttpRequest.DONE))) {
+      req_config.open("GET", WATERER_URL_BASE + 'config', true);
+      req_config.onreadystatechange = function () {
+        if(req_config.readyState === XMLHttpRequest.DONE) {
+          var status = req_config.status;
+          if (status === 0 || (status >= 200 && status < 300)) {
+            try {
+              var j = JSON.parse(req_config.responseText);
+              Config(j)
+            }
+            catch(err) {
+              Config(null)
+            }
+          } else {
+            Config(null)
+          }
+        }
+      };
+      req_config.send();
+    }
+  }
+
+
 </script>
 
 </HEAD>
@@ -287,9 +500,7 @@ footer {
       </div>
     </div>
     <div id="config" style="display: none;">
-      <div class="config">
-        <h1>System Configuration:</h1>
-      </div>
+      Retrieving configuration...  Please wait.
     </div>
     <div id="logs" style="display: none;">
       Retrieving logs...  Please wait.
@@ -299,60 +510,10 @@ footer {
 </section>
 
 <script type="text/javascript">
+
+  // Select the initially visible pane
   Select('status');
-  const refresh_seconds = 10;
-  window.setInterval("refresh()", 1000 * refresh_seconds);  
-  const req_status = new XMLHttpRequest();
-  const req_logs = new XMLHttpRequest();
-  function refresh()
-  {
-    if((req_status.readyState === XMLHttpRequest.UNSENT) || (req_status.readyState === XMLHttpRequest.DONE)) {
-      req_status.open("GET", WATERER_URL_BASE + 'status', true);
-      req_status.onreadystatechange = function () {
-        if(req_status.readyState === XMLHttpRequest.DONE) {
-          var status = req_status.status;
-          if (status === 0 || (status >= 200 && status < 300)) {
-            try
-            {
-              var j = JSON.parse(req_status.responseText);
-              Status(j)
-            }
-            catch(err)
-            {
-              Status(null)
-            }
-          } else {
-            Status(null)
-          }
-        }
-      };
-      req_status.send();
-    }
-    if((req_logs.readyState === XMLHttpRequest.UNSENT) || (req_logs.readyState === XMLHttpRequest.DONE)) {
-      req_logs.open("GET", WATERER_URL_BASE + 'logs', true);
-      req_logs.onreadystatechange = function () {
-        if(req_logs.readyState === XMLHttpRequest.DONE) {
-          var status = req_logs.status;
-          if (status === 0 || (status >= 200 && status < 300)) {
-            try
-            {
-              var j = JSON.parse(req_logs.responseText);
-              Logs(j)
-            }
-            catch(err)
-            {
-              Logs(null)
-            }
-          } else {
-            console.log("FAILED!");
-            Logs(null)
-          }
-        }
-      };
-      req_logs.send();
-    }
-  }
-  refresh();
+
 </script>
 
 <footer>
@@ -361,3 +522,4 @@ footer {
 
 </BODY>
 </HTML>
+
